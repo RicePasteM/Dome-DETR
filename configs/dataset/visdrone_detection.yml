@@ -1,0 +1,60 @@
+task: detection
+
+evaluator:
+  type: CocoEvaluatorSlow
+  iou_types: ['bbox', ]
+
+num_classes: 12
+remap_mscoco_category: False
+
+eval_spatial_size: [800, 800] # h w
+
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetection
+    img_folder: /data/wupx/VisDrone/VisDrone2019-DET-train/images
+    ann_file: /data/wupx/VisDrone/annotations_coco/VisDrone2019-DET_train_coco_new.json
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Mosaic, size: [800, 800], p: 1.0}
+        - {type: MixUp, alpha: 1.5, p: 0.2}
+        - {type: RandomPhotometricDistort, p: 0.5}
+        - {type: RandomZoomOut, fill: 0}
+        - {type: RandomIoUCrop, p: 0.8}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: RandomHorizontalFlip}
+        - {type: Resize, size: [800, 800], } 
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: ConvertPILImage, dtype: 'float32', scale: True}
+        - {type: ConvertBoxes, fmt: 'cxcywh', normalize: True}
+      policy:
+        name: stop_epoch
+        epoch: 72 # epoch in [71, ~) stop `ops`
+        ops: ['Mosaic', 'MixUp', 'RandomPhotometricDistort', 'RandomZoomOut', 'RandomIoUCrop']
+  collate_fn:
+    type: BatchImageCollateFunction
+    base_size: 800
+    base_size_repeat: 2
+    stop_epoch: 72 # epoch in [72, ~) stop `multiscales`
+  shuffle: True
+  num_workers: 4
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetection
+    img_folder: /data/wupx/VisDrone/VisDrone2019-DET-val/images
+    ann_file: /data/wupx/VisDrone/annotations_coco/VisDrone2019-DET_val_coco_new.json
+    return_masks: False
+    transforms:
+      type: Compose
+      ops:
+        - {type: Resize, size: [800, 800], }
+        - {type: ConvertPILImage, dtype: 'float32', scale: True}
+  collate_fn:
+    type: BatchImageCollateFunction
+  shuffle: False
+  num_workers: 4

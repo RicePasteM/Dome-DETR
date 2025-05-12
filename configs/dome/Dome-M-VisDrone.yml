@@ -1,0 +1,87 @@
+__include__: [
+  '../dataset/visdrone_detection.yml',
+  '../runtime.yml',
+  './include/dataloader.yml',
+  './include/optimizer.yml',
+  './include/dome_hgnetv2.yml',
+]
+
+output_dir: ./output/dome_m_visdrone
+
+
+DOME:
+  backbone: HGNetv2
+
+HGNetv2:
+  name: 'B2'
+  return_idx: [0, 1, 2, 3]
+  freeze_at: -1
+  freeze_norm: False
+  use_lab: True
+
+DomeTransformer:
+  num_layers: 4  # 5 6
+  eval_idx: -1  # -2 -3
+  feat_channels: [256, 256, 256, 256]
+  feat_strides: [4, 8, 16, 32]
+  num_points: [4, 4, 4, 4]
+  num_levels: 4
+  min_num_select: 250
+  max_num_select: 500
+
+HybridEncoder:
+  in_channels: [96, 384, 768, 1536]
+  feat_strides: [4, 8, 16, 32]
+  use_encoder_idx: [3] # Only not deformable
+  use_hybrid: True
+  num_encoder_layers: 1
+  use_deformable: False
+  enc_n_points: 6 # Only deformable
+  hidden_dim: 256
+  depth_mult: .67
+  expansion: 1
+  num_feature_levels: 4
+  use_defe: True
+  defe_type: 'light'
+  use_mwas: True # Only if use_defe
+  mwas_window_size: 5
+
+DomeCriterion:
+  defe_density_map_weight: 1
+
+optimizer:
+  type: AdamW
+  params:
+    -
+      params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.00002
+    -
+      params: '^(?=.*backbone)(?=.*norm|bn).*$'
+      lr: 0.00002
+      weight_decay: 0.
+    -
+      params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.
+
+  lr: 0.0002
+  betas: [0.9, 0.999]
+  weight_decay: 0.000065
+
+
+lr_scheduler:
+  type: MultiStepLR
+  milestones: [60, 100]
+  gamma: 0.8
+
+
+# Increase to search for the optimal ema
+epoches: 120
+train_dataloader:
+  dataset:
+    transforms:
+      policy:
+        epoch: 108
+  collate_fn:
+    stop_epoch: 108
+    ema_restart_decay: 0.9999
+    base_size_repeat: 2

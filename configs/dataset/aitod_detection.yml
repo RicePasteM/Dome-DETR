@@ -1,0 +1,41 @@
+task: detection
+
+evaluator:
+  type: AitodCocoEvaluator
+  iou_types: ['bbox', ]
+
+num_classes: 9 # your dataset classes
+remap_mscoco_category: False
+
+train_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetection
+    img_folder: /data/lihb/Datasets/aitod/aitod/images/trainval
+    ann_file: /data/lihb/Datasets/aitod/aitod/annotations/aitodv2_trainval.json
+    return_masks: False
+    transforms:
+      type: Compose
+      ops: ~
+  shuffle: True
+  num_workers: 4
+  drop_last: True
+  collate_fn:
+    type: BatchImageCollateFunction
+
+
+val_dataloader:
+  type: DataLoader
+  dataset:
+    type: CocoDetection
+    img_folder:  /data/lihb/Datasets/aitod/aitod/images/test
+    ann_file: /data/lihb/Datasets/aitod/aitod/annotations/aitodv2_test.json
+    return_masks: False
+    transforms:
+      type: Compose
+      ops: ~
+  shuffle: False
+  num_workers: 4
+  drop_last: False
+  collate_fn:
+    type: BatchImageCollateFunction
