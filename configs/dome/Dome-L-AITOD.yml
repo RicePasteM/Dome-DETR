@@ -20,7 +20,7 @@ HGNetv2:
   freeze_norm: False
 
 DomeTransformer:
-  num_layers: 6  # 5 6
+  num_layers: 4  # 5 6
   num_levels: 4
   eval_idx: -1  # -2 -3
   feat_channels: [256, 256, 256, 256]
