@@ -29,7 +29,7 @@
 
 [2025/5/16] We released the pretrained checkpoints of Dome-DETR.
 
-### Pretrained Checkpoints
+## Pretrained Checkpoints
 
 | Model           | Dataset      | AP   | #Params | GFLOPs | config                                    | checkpoint                                                                                               | logs                                                                                                    |
 |:---------------:|:------------:|:----:|:-------:|:------:|:-----------------------------------------:|:--------------------------------------------------------------------------------------------------------:|:-------------------------------------------------------------------------------------------------------:|
@@ -38,7 +38,7 @@
 | **Dome-DETR-M** | VisDrone2019 | 38.2 | 23.9M   | 284.5  | [yml](./configs/dome/Dome-M-VisDrone.yml) | [38.2](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-M-VisDrone-best.pth) | [url](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-M-VisDrone-best.log) |
 | **Dome-DETR-L** | VisDrone2019 | 39.1 | 36.0M   | 376.4  | [yml](./configs/dome/Dome-L-VisDrone.yml) | [39.1](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-L-VisDrone-best.pth) | [url](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-L-VisDrone-best.log) |
 
-### Setup
+## Setup
 
 ```shell
 conda create -n dome python=3.11.9
