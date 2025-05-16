@@ -89,6 +89,6 @@ If you use Dome-DETR or its methods in your work, please cite the following BibT
 
 ## Aknowledgement
 
-Dome-DETR is built upon [D-FINE]([GitHub - Peterande/D-FINE: D-FINE: Redefine Regression Task of DETRs as Fine-grained Distribution Refinement [ICLR 2025 Spotlight]](https://github.com/Peterande/D-FINE)). Also, thanks to the inspirations from [DQ-DETR]().
+Dome-DETR is built upon [D-FINE](https://github.com/Peterande/D-FINE). Also, thanks to the inspirations from [DQ-DETR]().
 
 ✨ Feel free to contribute and reach out if you have any questions! ✨
