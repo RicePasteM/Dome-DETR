@@ -89,6 +89,6 @@ If you use Dome-DETR or its methods in your work, please cite the following BibT
 
 ## Aknowledgement
 
-Dome-DETR is built upon [D-FINE](https://github.com/Peterande/D-FINE). Also, thanks to the inspirations from [DQ-DETR]().
+Dome-DETR is built upon [D-FINE](https://github.com/Peterande/D-FINE). Also, thanks to the inspirations from [DQ-DETR](https://github.com/hoiliu-0801/DQ-DETR).
 
 ✨ Feel free to contribute and reach out if you have any questions! ✨
