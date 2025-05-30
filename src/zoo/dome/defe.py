@@ -135,7 +135,7 @@ class GaussHeatmapGenerator:
 
     def __call__(self, bboxes):
         H, W = self.img_size
-        heatmap = np.zeros((H, W), dtype=np.float32)
+        heatmap = torch.zeros((H, W), dtype=torch.float32)
         
         for box in bboxes:
             x_center, y_center, width, height = box
@@ -148,7 +148,7 @@ class GaussHeatmapGenerator:
             sigma_y = max(h_px * self.sigma_ratio, 1.0)
             
             kernel = self._gaussian_kernel(sigma_x, sigma_y)
-            if kernel.size == 0:
+            if kernel.numel() == 0:  # 使用 numel() 替代 size
                 continue
             
             k_h, k_w = kernel.shape
@@ -170,7 +170,7 @@ class GaussHeatmapGenerator:
             kernel_cropped = kernel[k_start_y:k_end_y, k_start_x:k_end_x]
             
             # 确保区域有效
-            if kernel_cropped.size == 0:
+            if kernel_cropped.numel() == 0:  # 使用 numel() 替代 size
                 continue
                 
             # 确保尺寸匹配
@@ -184,9 +184,8 @@ class GaussHeatmapGenerator:
             # 叠加到热图
             heatmap[y_start:y_end, x_start:x_end] += kernel_cropped
         
-        heatmap = torch.from_numpy(heatmap).float()
         if heatmap.max() > 0:
-            heatmap /= heatmap.max()
+            heatmap = heatmap / heatmap.max()
         return heatmap.unsqueeze(0)
 
     def _gaussian_kernel(self, sigma_x, sigma_y):
@@ -200,11 +199,19 @@ class GaussHeatmapGenerator:
         if kernel_h % 2 == 0:
             kernel_h += 1
             
-        x = np.arange(kernel_w) - (kernel_w // 2)
-        y = np.arange(kernel_h) - (kernel_h // 2)
-        xx, yy = np.meshgrid(x, y)
+        # 使用 torch.arange 替代 np.arange
+        x = torch.arange(kernel_w, dtype=torch.float32) - (kernel_w // 2)
+        y = torch.arange(kernel_h, dtype=torch.float32) - (kernel_h // 2)
         
-        kernel = np.exp(-(xx**2 / (2 * sigma_x**2) + yy**2 / (2 * sigma_y**2)))
-        if kernel.sum() > 0:
-            kernel /= kernel.sum()
+        # 使用 torch.meshgrid 替代 np.meshgrid
+        yy, xx = torch.meshgrid(y, x, indexing='ij')
+        
+        # 使用 torch 操作计算高斯核
+        kernel = torch.exp(-(xx**2 / (2 * sigma_x**2) + yy**2 / (2 * sigma_y**2)))
+        
+        # 归一化
+        kernel_sum = kernel.sum()
+        if kernel_sum > 0:
+            kernel = kernel / kernel_sum
+            
         return kernel

@@ -53,6 +53,29 @@ pip install -r requirements.txt
 bash dist_test.sh
 ```
 
+## Prepare Datasets
+
+<details close>
+<summary> AI-TOD-v2 </summary>
+
+- Step 1: Download the AI-TOD image set from `https://github.com/jwwangchn/AI-TOD`, along with the AI-TOD-v2 annoations from `https://github.com/Chasel-Tsui/mmdet-aitod`.
+Or you can download the collected full dataset provided by `https://github.com/hoiliu-0801/DQ-DETR`.
+
+- Step 2: Change the paths in `configs\dataset\aitod_detection.yml`.
+
+
+</details>
+
+
+<details close>
+<summary> VisDrone2019 </summary>
+
+- Step 1: Download the VisDrone2019 dataset from `https://github.com/VisDrone/VisDrone-Dataset`.
+
+- Step 2: Process the dataset using our provided tools in `tools\dataset\visdrone2coco.py`, which convert the dataset into COCO format and filters out reduntant categories.
+
+</details>
+
 ## Train
 
 ```sh
