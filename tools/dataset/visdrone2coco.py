@@ -14,7 +14,6 @@ def convert_to_cocodetection(dir, output_dir):
     id_num = 0
  
     categories = [
-            {"id": 0, "name": "ignored regions", "supercategory": "nark"},
             {"id": 1, "name": "pedestrian", "supercategory": "nark"},
             {"id": 2, "name": "people", "supercategory": "nark"},
             {"id": 3, "name": "bicycle", "supercategory": "nark"},
@@ -24,8 +23,7 @@ def convert_to_cocodetection(dir, output_dir):
             {"id": 7, "name": "tricycle", "supercategory": "nark"},
             {"id": 8, "name": "awning-tricycle", "supercategory": "nark"},
             {"id": 9, "name": "bus", "supercategory": "nark"},
-            {"id": 10, "name": "motor", "supercategory": "nark"},
-            {"id": 11, "name": "others", "supercategory": "nark"}
+            {"id": 10, "name": "motor", "supercategory": "nark"}
         ]
     for mode in ["train", "val"]:
         images = []
@@ -56,6 +54,9 @@ def convert_to_cocodetection(dir, output_dir):
                 if line.endswith(","):  # filter data
                     line = line.rstrip(",")
                 line_list = [int(i) for i in line.split(",")]
+                # Skip ignored regions (category_id = 0) and others (category_id = 11)
+                if line_list[5] in [0, 11]:
+                    continue
                 bbox_xywh = [line_list[0], line_list[1], line_list[2], line_list[3]]
                 annotation["image_id"] = idx
                 annotation["bbox"] = bbox_xywh
