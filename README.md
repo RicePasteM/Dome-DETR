@@ -35,12 +35,12 @@
 
 ## Pretrained Checkpoints
 
-| Model           | Dataset      | AP   | #Params | GFLOPs | config                                    | checkpoint                                                                                               | logs                                                                                                    |
-|:---------------:|:------------:|:----:|:-------:|:------:|:-----------------------------------------:|:--------------------------------------------------------------------------------------------------------:|:-------------------------------------------------------------------------------------------------------:|
-| **Dome-DETR-M** | AI-TOD-V2    | 33.9 | 23.9M   | 252.6  | [yml](./configs/dome/Dome-M-AITOD.yml)    | [33.9](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-M-AITOD-best.pth)    | [url](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-M-AITOD-best.log)    |
-| **Dome-DETR-L** | AI-TOD-V2    | 35.0 | 36.0M   | 358.7  | [yml](./configs/dome/Dome-L-AITOD.yml)    | [35.0](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-L-AITOD-best.pth)    | [url](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-L-AITOD-best.log)    |
-| **Dome-DETR-M** | VisDrone2019 | 38.2 | 23.9M   | 284.5  | [yml](./configs/dome/Dome-M-VisDrone.yml) | [38.2](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-M-VisDrone-best.pth) | [url](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-M-VisDrone-best.log) |
-| **Dome-DETR-L** | VisDrone2019 | 39.1 | 36.0M   | 376.4  | [yml](./configs/dome/Dome-L-VisDrone.yml) | [39.1](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-L-VisDrone-best.pth) | [url](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-L-VisDrone-best.log) |
+| Model           | Dataset      | AP   | #Params | GFLOPs | config                                    | device                                    | checkpoint                                                                                               | logs                                                                                                    |
+|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| **Dome-DETR-M** | AI-TOD-V2    | 33.9 | 23.9M   | 252.6  | [yml](./configs/dome/Dome-M-AITOD.yml) | 8*RTX 4090   | [33.9](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-M-AITOD-best.pth)    | [url](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-M-AITOD-best.log)    |
+| **Dome-DETR-L** | AI-TOD-V2    | 35.0 | 36.0M   | 358.7  | [yml](./configs/dome/Dome-L-AITOD.yml)  | 8*RTX 4090     | [35.0](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-L-AITOD-best.pth)    | [url](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-L-AITOD-best.log)    |
+| **Dome-DETR-M** | VisDrone2019 | 38.2 | 23.9M   | 284.5  | [yml](./configs/dome/Dome-M-VisDrone.yml) | 8*RTX 4090   | [38.2](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-M-VisDrone-best.pth) | [url](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-M-VisDrone-best.log) |
+| **Dome-DETR-L** | VisDrone2019 | 39.1 | 36.0M   | 376.4  | [yml](./configs/dome/Dome-L-VisDrone.yml) | 8*RTX 4090   | [39.1](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-L-VisDrone-best.pth) | [url](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/pretrain_ckpts/Dome-L-VisDrone-best.log) |
 
 ## Setup
 
