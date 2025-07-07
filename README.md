@@ -1,4 +1,4 @@
-<h1 align="center">Dome-DETR: DETR with Density-Oriented Feature-Query Manipulation for Efficient Tiny Object Detection</h1>
+<h1 align="center">[ACMMM25] Dome-DETR: DETR with Density-Oriented Feature-Query Manipulation for Efficient Tiny Object Detection</h1>
 
 <p align="center">
     <a href="https://github.com/RicePasteM/Dome-DETR/blob/master/LICENSE" style="text-decoration: none;">
@@ -25,9 +25,13 @@
 
 ## Updates
 
-[2025/xx/xx] We released the code of Dome-DETR.
+[2025/7/7] Our paper has been accepted by ACM Multimedia 2025.
 
 [2025/5/16] We released the pretrained checkpoints of Dome-DETR.
+
+## Known Issues
+
+- [ ] Due to dynamic query numbers, current code only supports single-batch training on each GPU, which will be fixed later.
 
 ## Pretrained Checkpoints
 
