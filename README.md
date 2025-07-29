@@ -25,7 +25,7 @@
 
 ## Updates
 
-[2025/7/15] Our made our code repo public.
+[2025/7/15] We made our code repo public.
 
 [2025/7/7] Our paper has been accepted by ACM Multimedia 2025.
 
