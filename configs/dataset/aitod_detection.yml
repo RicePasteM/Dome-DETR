@@ -11,8 +11,8 @@ train_dataloader:
   type: DataLoader
   dataset:
     type: CocoDetection
-    img_folder: /data/lihb/Datasets/aitod/aitod/images/trainval
-    ann_file: /data/lihb/Datasets/aitod/aitod/annotations/aitodv2_trainval.json
+    img_folder: /media/nvme/mzj/AI-TOD/images/trainval
+    ann_file: /media/nvme/mzj/AI-TOD/annotations/aitodv2_trainval.json
     return_masks: False
     transforms:
       type: Compose
@@ -28,8 +28,8 @@ val_dataloader:
   type: DataLoader
   dataset:
     type: CocoDetection
-    img_folder:  /data/lihb/Datasets/aitod/aitod/images/test
-    ann_file: /data/lihb/Datasets/aitod/aitod/annotations/aitodv2_test.json
+    img_folder:  /media/nvme/mzj/AI-TOD/test
+    ann_file: /media/nvme/mzj/AI-TOD/annotations/aitodv2_test.json
     return_masks: False
     transforms:
       type: Compose
