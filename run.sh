@@ -1,0 +1,1 @@
+conda activate /mnt/volumes/base-tts-ali-sh-mix/huzhangchi/envs/dome

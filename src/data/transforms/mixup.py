@@ -67,3 +67,6 @@ class MixUp(T.Transform):
         mixed_target["mixup_weights"] = torch.tensor([lam, 1 - lam])
 
         return mixed_image, mixed_target, dataset 
+
+    def transform(self, inpt, params):
+        return self._transform(inpt, params)

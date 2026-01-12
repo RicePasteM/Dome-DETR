@@ -87,3 +87,6 @@ class Mosaic(T.Transform):
         image, target = self.crop(image, target)
 
         return image, target, dataset
+
+    def transform(self, inpt, params):
+        return self._transform(inpt, params)

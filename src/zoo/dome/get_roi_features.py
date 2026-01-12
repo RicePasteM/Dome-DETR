@@ -194,33 +194,36 @@ class WindowProcessor(nn.Module):
         self.window_encoder = AxisPermutedEncoder(encoder_layer, self.num_layers)
         
 
-    def forward(self, backbone_memory, defe_feature_filtered, n, glob_pos_embed):
+    def forward(self, backbone_memory, defe_feature_filtered, window_size, glob_pos_embed):
         """
         前向传播
         Args:
             backbone_memory: 原特征图 [B, C, H, W]
             defe_feature_filtered: 二值图 [B, 1, H, W] 
-            n: 窗口划分数
+            window_size: 窗口大小 (像素/特征点数)
             feature_enhancer: 可选的特征增强模块
         """
 
         B, C, H, W = backbone_memory.shape
 
-        assert H%n == 0 and W%n == 0, "H and W must be divisible by n"
+        assert H % window_size == 0 and W % window_size == 0, "H and W must be divisible by window_size"
+        
+        num_win_h = H // window_size
+        num_win_w = W // window_size
 
-        rel_pos_embed = self._get_rel_embedding((H//n, W//n)).to(backbone_memory.device)
+        rel_pos_embed = self._get_rel_embedding((window_size, window_size)).to(backbone_memory.device)
         
         # 初始化重建特征图
         reconstructed = backbone_memory.clone()
         
         # 生成窗口划分
-        windows, defe_mask = self._prepare_windows(backbone_memory, defe_feature_filtered, n)
+        windows, defe_mask = self._prepare_windows(backbone_memory, defe_feature_filtered, window_size)
 
         # import pdb; pdb.set_trace()
 
         if SAVE_INTERMEDIATE_VISUALIZE_RESULT:
-            window_mask_vis = defe_mask.float().unsqueeze(-1)  # [B, n, n, 1]
-            visualize_src_flatten(window_mask_vis, [(n, n)], "defe_window_mask", False)
+            window_mask_vis = defe_mask.float().unsqueeze(-1)  # [B, num_win_h, num_win_w, 1]
+            visualize_src_flatten(window_mask_vis, [(num_win_h, num_win_w)], "defe_window_mask", False)
 
         
         for b in range(B):
@@ -240,7 +243,7 @@ class WindowProcessor(nn.Module):
             window_features, glob_pos_embeds = self._process_windows(
                 windows[b],
                 valid_windows,
-                H, W, n,
+                H, W, window_size,
                 glob_pos_embed
             )
             
@@ -252,26 +255,28 @@ class WindowProcessor(nn.Module):
                 b,
                 encoded_features,
                 valid_windows,
-                H//n, W//n
+                window_size, window_size
             )
             
         return reconstructed, defe_mask
 
 
-    def _prepare_windows(self, features, mask, n):
+    def _prepare_windows(self, features, mask, window_size):
         """预处理窗口划分和掩码（最大池化优化版）"""
         B, C, H_feat, W_feat = features.shape
         H_mask, W_mask = mask.shape[-2:]  # 原始mask的高分辨率尺寸
         
+        num_win_h = H_feat // window_size
+        num_win_w = W_feat // window_size
+        
         # 计算池化核尺寸和步长
-        kernel_h = H_mask // H_feat * (H_feat // n)
-        kernel_w = W_mask // W_feat * (W_feat // n)
+        kernel_h = H_mask // H_feat * window_size
+        kernel_w = W_mask // W_feat * window_size
         stride_h = kernel_h
         stride_w = kernel_w
         
-        # 划分特征图窗口 [B, n, n, C, h_feat, w_feat]
-        h_feat, w_feat = H_feat // n, W_feat // n
-        windows = features.view(B, C, n, h_feat, n, w_feat).permute(0, 2, 4, 1, 3, 5)
+        # 划分特征图窗口 [B, num_win_h, num_win_w, C, window_size, window_size]
+        windows = features.view(B, C, num_win_h, window_size, num_win_w, window_size).permute(0, 2, 4, 1, 3, 5)
         
         # 最大池化统计窗口有效性
         mask_float = mask.float()  # 转换为浮点型以支持池化
@@ -280,15 +285,20 @@ class WindowProcessor(nn.Module):
             kernel_size=(kernel_h, kernel_w), 
             stride=(stride_h, stride_w)
         )
-        defe_mask = (pooled_mask.squeeze(1) > 0)  # [B, n, n]
+        defe_mask = (pooled_mask.squeeze(1) > 0)  # [B, num_win_h, num_win_w]
         
         return windows, defe_mask
 
 
-    def _process_windows(self, windows, valid_indices, H, W, n, glob_pos_embed):
+    def _process_windows(self, windows, valid_indices, H, W, window_size, glob_pos_embed):
         """处理窗口特征并添加位置编码"""
         batch_features = []
         batch_glob_pos_embed = []
+        
+        # Grid dimensions based on window_size
+        num_win_h = H // window_size
+        num_win_w = W // window_size
+        
         for i, j in valid_indices:
             # 原始窗口特征 [C, h, w]
             win_feat = windows[i, j]
@@ -297,9 +307,10 @@ class WindowProcessor(nn.Module):
             combined = win_feat
             
             batch_features.append(combined.unsqueeze(0))
-            batch_glob_pos_embed.append(self._get_abs_embedding(glob_pos_embed, i, j, H//n, W//n))
+            batch_glob_pos_embed.append(self._get_abs_embedding(glob_pos_embed, i, j, window_size, window_size))
         
         return torch.cat(batch_features, dim=0), torch.stack(batch_glob_pos_embed)  # [N, C]
+
     
     def _encode_features(self, features, rel_pos_embed, glob_pos_embeds):
         """三层编码处理"""
