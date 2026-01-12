@@ -44,7 +44,7 @@ HybridEncoder:
   use_defe: True
   defe_type: 'light'
   use_mwas: True # Only if use_defe
-  mwas_window_size  : 5
+  mwas_window_size  : 10
 
 DomeCriterion:
   defe_density_map_weight: 1

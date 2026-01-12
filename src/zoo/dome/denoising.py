@@ -143,8 +143,11 @@ def get_contrastive_denoising_training_group(
                 head_end = (b + 1) * num_heads
                 
                 # 对每个头应用相同的padding屏蔽
-                attn_mask[head_start:head_end, padding_start:, :] = True
-                attn_mask[head_start:head_end, :, padding_start:] = True
+                # Prevent valid queries from attending to padding
+                attn_mask[head_start:head_end, :padding_start, padding_start:] = True
+                # Prevent padding queries from attending to valid queries
+                attn_mask[head_start:head_end, padding_start:, :padding_start] = True
+                # Padding queries CAN see themselves (implicitly False) to avoid NaN in softmax
 
     dn_meta = {
         "dn_positive_idx": dn_positive_idx,

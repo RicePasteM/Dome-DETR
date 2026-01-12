@@ -7,3 +7,5 @@ tensorboard
 scipy
 calflops
 transformers
+scikit-image
+matplotlib

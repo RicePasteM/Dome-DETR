@@ -1,6 +1,6 @@
 """
-Copied from D-FINE (https://github.com/Peterande/D-FINE)
-Copyright(c) 2024 The D-FINE Authors. All Rights Reserved.
+Copied from RT-DETR (https://github.com/lyuwenyu/RT-DETR)
+Copyright(c) 2023 lyuwenyu. All Rights Reserved.
 """
 
 from typing import Any, Dict, List, Optional
@@ -118,6 +118,9 @@ class ConvertBoxes(T.Transform):
         self.fmt = fmt
         self.normalize = normalize
 
+    def transform(self, inpt: Any, params: Dict[str, Any]) -> Any:
+        return self._transform(inpt, params)
+
     def _transform(self, inpt: Any, params: Dict[str, Any]) -> Any:
         spatial_size = getattr(inpt, _boxes_keys[1])
         if self.fmt:
@@ -141,6 +144,9 @@ class ConvertPILImage(T.Transform):
         super().__init__()
         self.dtype = dtype
         self.scale = scale
+
+    def transform(self, inpt: Any, params: Dict[str, Any]) -> Any:
+        return self._transform(inpt, params)
 
     def _transform(self, inpt: Any, params: Dict[str, Any]) -> Any:
         inpt = F.pil_to_tensor(inpt)

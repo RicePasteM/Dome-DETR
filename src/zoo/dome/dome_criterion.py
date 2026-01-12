@@ -74,7 +74,7 @@ class DomeCriterion(nn.Module):
         self.mal_alpha = mal_alpha
         self.use_uni_set = use_uni_set
 
-    def loss_labels_focal(self, outputs, targets, indices, num_boxes):
+    def loss_labels_focal(self, outputs, targets, indices, num_boxes, batch_queries_num=None):
         assert "pred_logits" in outputs
         src_logits = outputs["pred_logits"]
         idx = self._get_src_permutation_idx(indices)
@@ -87,11 +87,17 @@ class DomeCriterion(nn.Module):
         loss = torchvision.ops.sigmoid_focal_loss(
             src_logits, target, self.alpha, self.gamma, reduction="none"
         )
+
+        if batch_queries_num is not None:
+            mask = torch.arange(src_logits.shape[1], device=src_logits.device)[None, :] < \
+                   torch.as_tensor(batch_queries_num, device=src_logits.device)[:, None]
+            loss = loss * mask.unsqueeze(-1)
+
         loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
 
         return {"loss_focal": loss}
 
-    def loss_labels_vfl(self, outputs, targets, indices, num_boxes, values=None):
+    def loss_labels_vfl(self, outputs, targets, indices, num_boxes, values=None, batch_queries_num=None):
         assert "pred_boxes" in outputs
         idx = self._get_src_permutation_idx(indices)
         if values is None:
@@ -120,11 +126,16 @@ class DomeCriterion(nn.Module):
         loss = F.binary_cross_entropy_with_logits(
             src_logits, target_score, weight=weight, reduction="none"
         )
+
+        if batch_queries_num is not None:
+            mask = torch.arange(src_logits.shape[1], device=src_logits.device)[None, :] < \
+                   torch.as_tensor(batch_queries_num, device=src_logits.device)[:, None]
+            loss = loss * mask.unsqueeze(-1)
+
         loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
         return {"loss_vfl": loss}
-
     
-    def loss_labels_mal(self, outputs, targets, indices, num_boxes, values=None):
+    def loss_labels_mal(self, outputs, targets, indices, num_boxes, values=None, batch_queries_num=None):
         assert 'pred_boxes' in outputs
         idx = self._get_src_permutation_idx(indices)
         if values is None:
@@ -155,11 +166,17 @@ class DomeCriterion(nn.Module):
 
         # print(" ### DEIM-gamma{}-alpha{} ### ".format(self.gamma, self.mal_alpha))
         loss = F.binary_cross_entropy_with_logits(src_logits, target_score, weight=weight, reduction='none')
+
+        if batch_queries_num is not None:
+            mask = torch.arange(src_logits.shape[1], device=src_logits.device)[None, :] < \
+                   torch.as_tensor(batch_queries_num, device=src_logits.device)[:, None]
+            loss = loss * mask.unsqueeze(-1)
+
         loss = loss.mean(1).sum() * src_logits.shape[1] / num_boxes
         return {'loss_mal': loss}
 
 
-    def loss_boxes(self, outputs, targets, indices, num_boxes, boxes_weight=None):
+    def loss_boxes(self, outputs, targets, indices, num_boxes, boxes_weight=None, **kwargs):
         """Compute the losses related to the bounding boxes, the L1 regression loss and the GIoU loss
         targets dicts must contain the key "boxes" containing a tensor of dim [nb_target_boxes, 4]
         The target boxes are expected in format (center_x, center_y, w, h), normalized by the image size.
@@ -180,7 +197,7 @@ class DomeCriterion(nn.Module):
 
         return losses
 
-    def loss_local(self, outputs, targets, indices, num_boxes, T=5):
+    def loss_local(self, outputs, targets, indices, num_boxes, T=5, **kwargs):
         """Compute Fine-Grained Localization (FGL) Loss
         and Decoupled Distillation Focal (DDF) Loss."""
 
@@ -334,6 +351,7 @@ class DomeCriterion(nn.Module):
                       The expected keys in each dict depends on the losses applied, see each loss' doc
         """
         outputs_without_aux = {k: v for k, v in outputs.items() if "aux" not in k}
+        batch_queries_num = outputs.get("batch_queries_num")
 
         # Retrieve the matching between the outputs of the last layer and the targets
         indices = self.matcher(outputs_without_aux, targets)["indices"]
@@ -379,7 +397,7 @@ class DomeCriterion(nn.Module):
             indices_in = indices_go if use_uni_set else indices
             num_boxes_in = num_boxes_go if use_uni_set else num_boxes
             meta = self.get_loss_meta_info(loss, outputs, targets, indices_in)
-            l_dict = self.get_loss(loss, outputs, targets, indices_in, num_boxes_in, **meta)
+            l_dict = self.get_loss(loss, outputs, targets, indices_in, num_boxes_in, batch_queries_num=batch_queries_num, **meta)
             l_dict = {k: l_dict[k] * self.weight_dict[k] for k in l_dict if k in self.weight_dict}
             losses.update(l_dict)
 
@@ -394,7 +412,7 @@ class DomeCriterion(nn.Module):
                     indices_in = indices_go if use_uni_set else cached_indices[i]
                     num_boxes_in = num_boxes_go if use_uni_set else num_boxes
                     meta = self.get_loss_meta_info(loss, aux_outputs, targets, indices_in)
-                    l_dict = self.get_loss(loss, aux_outputs, targets, indices_in, num_boxes_in, **meta)
+                    l_dict = self.get_loss(loss, aux_outputs, targets, indices_in, num_boxes_in, batch_queries_num=batch_queries_num, **meta)
 
                     l_dict = {k: l_dict[k] * self.weight_dict[k] for k in l_dict if k in self.weight_dict}
                     l_dict = {k + f'_aux_{i}': v for k, v in l_dict.items()}
@@ -409,7 +427,7 @@ class DomeCriterion(nn.Module):
                 indices_in = indices_go if use_uni_set else cached_indices[-1]
                 num_boxes_in = num_boxes_go if use_uni_set else num_boxes
                 meta = self.get_loss_meta_info(loss, aux_outputs, targets, indices_in)
-                l_dict = self.get_loss(loss, aux_outputs, targets, indices_in, num_boxes_in, **meta)
+                l_dict = self.get_loss(loss, aux_outputs, targets, indices_in, num_boxes_in, batch_queries_num=batch_queries_num, **meta)
 
                 l_dict = {k: l_dict[k] * self.weight_dict[k] for k in l_dict if k in self.weight_dict}
                 l_dict = {k + '_pre': v for k, v in l_dict.items()}
@@ -435,7 +453,7 @@ class DomeCriterion(nn.Module):
                     indices_in = indices_go if use_uni_set else cached_indices_enc[i]
                     num_boxes_in = num_boxes_go if use_uni_set else num_boxes
                     meta = self.get_loss_meta_info(loss, aux_outputs, enc_targets, indices_in)
-                    l_dict = self.get_loss(loss, aux_outputs, enc_targets, indices_in, num_boxes_in, **meta)
+                    l_dict = self.get_loss(loss, aux_outputs, enc_targets, indices_in, num_boxes_in, batch_queries_num=batch_queries_num, **meta)
                     l_dict = {k: l_dict[k] * self.weight_dict[k] for k in l_dict if k in self.weight_dict}
                     l_dict = {k + f'_enc_{i}': v for k, v in l_dict.items()}
                     losses.update(l_dict)
