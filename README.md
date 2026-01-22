@@ -45,7 +45,6 @@
 | **Dome-DETR-M** | AI-TOD-V2    | 34.0 | 23.9M   | 252.6  | [yml](./configs/dome/Dome-M-AITOD.yml) | 4*RTX 5090   | [34.0](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/best_ckpts_dome_2026/aitod-m-best.pth)    | [url](logs/Dome-M-AITOD-20260109_111347.log)    |
 | **Dome-DETR-L** | AI-TOD-V2    | 34.7 | 33.4M   | 358.7  | [yml](./configs/dome/Dome-L-AITOD.yml) | 2*H200   | [34.7](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/best_ckpts_dome_2026/aitod-l-best.pth)    | [url](logs/Dome-L-AITOD-20260112_162005.log)    |
 
-**Take it easy. More ckpts will be uploaded soon once the re-training is finished.**
 
 ## Setup
 
