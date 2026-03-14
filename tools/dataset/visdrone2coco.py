@@ -54,15 +54,18 @@ def convert_to_cocodetection(dir, output_dir):
                 if line.endswith(","):  # filter data
                     line = line.rstrip(",")
                 line_list = [int(i) for i in line.split(",")]
-                # Skip ignored regions (category_id = 0) and others (category_id = 11)
-                if line_list[5] in [0, 11]:
+                # Drop "others" but keep ignored regions so they can be ignored
+                # during training/evaluation without polluting the label space.
+                category_id = int(line_list[5])
+                if category_id == 11:
                     continue
                 bbox_xywh = [line_list[0], line_list[1], line_list[2], line_list[3]]
                 annotation["image_id"] = idx
                 annotation["bbox"] = bbox_xywh
-                annotation["category_id"] = int(line_list[5])
+                annotation["category_id"] = category_id
                 annotation["id"] = id_num
-                annotation["iscrowd"] = 0
+                annotation["iscrowd"] = int(category_id == 0)
+                annotation["ignore"] = int(category_id == 0)
                 annotation["segmentation"] = []
                 annotation["area"] = bbox_xywh[2] * bbox_xywh[3]
                 id_num += 1
@@ -72,8 +75,12 @@ def convert_to_cocodetection(dir, output_dir):
         dataset_dict["annotations"] = annotations
         dataset_dict["categories"] = categories
         json_str = json.dumps(dataset_dict)
-        with open(f'{output_dir}/VisDrone2019-DET_{mode}_coco.json', 'w') as json_file:
-            json_file.write(json_str)
+        for output_name in [
+            f"VisDrone2019-DET_{mode}_coco.json",
+            f"VisDrone2019-DET_{mode}_coco_new.json",
+        ]:
+            with open(os.path.join(output_dir, output_name), "w") as json_file:
+                json_file.write(json_str)
     print("json file write done...")
  
  
@@ -128,4 +135,4 @@ def clamp(coord, width, height):
  
  
 if __name__ == '__main__':
-    convert_to_cocodetection(r"/mnt/d/tinydetection/datasets/visdrone",r"/mnt/d/tinydetection/datasets/visdrone/annotations_coco")
+    convert_to_cocodetection(r"/mnt/volumes/base-tts-ali-sh-mix/huzhangchi/data/visdrone",r"/mnt/volumes/base-tts-ali-sh-mix/huzhangchi/data/visdrone/annotations_coco")

@@ -25,6 +25,8 @@
 
 ## Updates
 
+[2026/3/14] We published pretrained checkpoints of Dome-DETR-M and Dome-DETR-L on VisDrone.
+
 [2026/1/12] We have fixed legacy issues, including multi-batch training and mwas mismatching.
 
 [2025/7/15] We made our code repo public.
@@ -44,6 +46,8 @@
 | **Dome-DETR-S** | AI-TOD-V2    | 32.1 | 13.2M   | 173.1  | [yml](./configs/dome/Dome-S-AITOD.yml) | 2*H200   | [32.1](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/best_ckpts_dome_2026/aitod-s-best.pth)    | [url](logs/Dome-S-AITOD-20260118_225531.log)    |
 | **Dome-DETR-M** | AI-TOD-V2    | 34.0 | 23.9M   | 252.6  | [yml](./configs/dome/Dome-M-AITOD.yml) | 4*RTX 5090   | [34.0](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/best_ckpts_dome_2026/aitod-m-best.pth)    | [url](logs/Dome-M-AITOD-20260109_111347.log)    |
 | **Dome-DETR-L** | AI-TOD-V2    | 34.7 | 33.4M   | 358.7  | [yml](./configs/dome/Dome-L-AITOD.yml) | 2*H200   | [34.7](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/best_ckpts_dome_2026/aitod-l-best.pth)    | [url](logs/Dome-L-AITOD-20260112_162005.log)    |
+| **Dome-DETR-M** | VisDrone    | 38.9 | 23.9M   | 284.6  | [yml](./configs/dome/Dome-M-VisDrone.yml) | 2*H200   | [38.9](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/best_ckpts_dome_2026/dome-m-visdrone_converted.pth)    | [url](logs/Dome-M-VisDrone-20260313_100546.log)    |
+| **Dome-DETR-L** | VisDrone    | 39.0 | 36.0M   | 376.4  | [yml](./configs/dome/Dome-L-VisDrone.yml) | 2*H200   | [39.0](https://huggingface.co/RicePasteM/Dome-DETR/resolve/main/best_ckpts_dome_2026/dome-l-visdrone_converted.pth)    | [url](logs/Dome-L-VisDrone-20260313_111659.log)    |
 
 
 ## Setup

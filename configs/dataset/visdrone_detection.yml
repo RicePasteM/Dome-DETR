@@ -1,7 +1,7 @@
 task: detection
 
 evaluator:
-  type: CocoEvaluatorSlow
+  type: VisdroneCocoEvaluator
   iou_types: ['bbox', ]
 
 num_classes: 12
@@ -13,8 +13,8 @@ train_dataloader:
   type: DataLoader
   dataset:
     type: CocoDetection
-    img_folder: /data/wupx/VisDrone/VisDrone2019-DET-train/images
-    ann_file: /data/wupx/VisDrone/annotations_coco/VisDrone2019-DET_train_coco_new.json
+    img_folder: /mnt/volumes/base-tts-ali-sh-mix/huzhangchi/data/visdrone/VisDrone2019-DET-train/images
+    ann_file: /mnt/volumes/base-tts-ali-sh-mix/huzhangchi/data/visdrone/annotations_coco/VisDrone2019-DET_train_coco_new.json
     return_masks: False
     transforms:
       type: Compose
@@ -46,8 +46,8 @@ val_dataloader:
   type: DataLoader
   dataset:
     type: CocoDetection
-    img_folder: /data/wupx/VisDrone/VisDrone2019-DET-val/images
-    ann_file: /data/wupx/VisDrone/annotations_coco/VisDrone2019-DET_val_coco_new.json
+    img_folder: /mnt/volumes/base-tts-ali-sh-mix/huzhangchi/data/visdrone/VisDrone2019-DET-val/images
+    ann_file: /mnt/volumes/base-tts-ali-sh-mix/huzhangchi/data/visdrone/annotations_coco/VisDrone2019-DET_val_coco_new.json
     return_masks: False
     transforms:
       type: Compose

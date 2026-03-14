@@ -131,11 +131,13 @@ class VisdroneCOCOeval_faster(COCOeval_faster):
 
 @register()
 class VisdroneCocoEvaluator(object):
-    def __init__(self, coco_gt, iou_types):
+    def __init__(self, coco_gt, iou_types, ignore_iof_threshold=0.5):
         assert isinstance(iou_types, (list, tuple))
         coco_gt = copy.deepcopy(coco_gt)
         self.coco_gt: COCO = coco_gt
         self.iou_types = iou_types
+        self.ignore_iof_threshold = ignore_iof_threshold
+        self.ignore_regions = self._collect_ignore_regions(coco_gt)
 
         self.coco_eval = {}
         for iou_type in iou_types:
@@ -214,9 +216,24 @@ class VisdroneCocoEvaluator(object):
                 continue
 
             boxes = prediction["boxes"]
+            scores = prediction["scores"]
+            labels = prediction["labels"]
+
+            ignore_boxes = self.ignore_regions.get(original_id)
+            if ignore_boxes is not None and len(boxes) > 0:
+                keep = ~detections_in_ignore_regions(
+                    boxes, ignore_boxes.to(boxes.device), self.ignore_iof_threshold
+                )
+                boxes = boxes[keep]
+                scores = scores[keep]
+                labels = labels[keep]
+
+            if len(boxes) == 0:
+                continue
+
             boxes = convert_to_xywh(boxes).tolist()
-            scores = prediction["scores"].tolist()
-            labels = prediction["labels"].tolist()
+            scores = scores.tolist()
+            labels = labels.tolist()
 
             coco_results.extend(
                 [
@@ -230,6 +247,26 @@ class VisdroneCocoEvaluator(object):
                 ]
             )
         return coco_results
+
+    @staticmethod
+    def _collect_ignore_regions(coco_gt):
+        ignore_regions = {}
+        for image_id, annotations in coco_gt.imgToAnns.items():
+            image_ignore_boxes = []
+            for ann in annotations:
+                if (
+                    ann.get("category_id") != 0
+                    and ann.get("iscrowd", 0) != 1
+                    and ann.get("ignore", 0) != 1
+                ):
+                    continue
+                x, y, w, h = ann["bbox"]
+                if w <= 0 or h <= 0:
+                    continue
+                image_ignore_boxes.append([x, y, x + w, y + h])
+            if image_ignore_boxes:
+                ignore_regions[image_id] = torch.tensor(image_ignore_boxes, dtype=torch.float32)
+        return ignore_regions
 
     def prepare_for_coco_segmentation(self, predictions):
         coco_results = []
@@ -296,6 +333,23 @@ class VisdroneCocoEvaluator(object):
 def convert_to_xywh(boxes):
     xmin, ymin, xmax, ymax = boxes.unbind(1)
     return torch.stack((xmin, ymin, xmax - xmin, ymax - ymin), dim=1)
+
+
+def detections_in_ignore_regions(boxes, ignore_boxes, iof_threshold):
+    if boxes.numel() == 0 or ignore_boxes.numel() == 0:
+        return torch.zeros((boxes.shape[0],), dtype=torch.bool, device=boxes.device)
+
+    top_left = torch.maximum(boxes[:, None, :2], ignore_boxes[None, :, :2])
+    bottom_right = torch.minimum(boxes[:, None, 2:], ignore_boxes[None, :, 2:])
+    intersection_wh = (bottom_right - top_left).clamp(min=0)
+    intersection = intersection_wh[..., 0] * intersection_wh[..., 1]
+
+    box_area = (
+        (boxes[:, 2] - boxes[:, 0]).clamp(min=1e-6)
+        * (boxes[:, 3] - boxes[:, 1]).clamp(min=1e-6)
+    ).unsqueeze(1)
+    iof = intersection / box_area
+    return iof.max(dim=1).values >= iof_threshold
 
 
 def merge(img_ids, eval_imgs):
