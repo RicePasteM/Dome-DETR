@@ -13,10 +13,21 @@ from .coco_dataset import (
 )
 from .coco_eval_slow import CocoEvaluatorSlow
 from .coco_eval import CocoEvaluator
-from .coco_eval_aitod import AitodCocoEvaluator
-# from .coco_eval_aitod_slow import AitodCocoEvaluatorSlow
 from .coco_eval_visdrone import VisdroneCocoEvaluator
-from .coco_eval_aitod_faster import AitodCocoFasterEvaluator
 from .coco_utils import get_coco_api_from_dataset
 from .voc_detection import VOCDetection
 from .voc_eval import VOCEvaluator
+
+
+try:
+    from .coco_eval_aitod import AitodCocoEvaluator
+except ModuleNotFoundError as exc:
+    AitodCocoEvaluator = None
+    _AITOD_IMPORT_ERROR = exc
+
+
+try:
+    from .coco_eval_aitod_faster import AitodCocoFasterEvaluator
+except ModuleNotFoundError as exc:
+    AitodCocoFasterEvaluator = None
+    _AITOD_IMPORT_ERROR = exc

@@ -119,9 +119,9 @@ class LiteDeFE(nn.Module):
             align_corners=False
         )
 
-        # 对density进行0-1归一化
-        if density.max() > 0:
-            density = density / density.max()
+        # Normalize with tensor ops so export does not depend on Python control flow.
+        density_max = density.amax()
+        density = torch.where(density_max > 0, density / density_max, density)
 
         reg_value = self.regression_head(x)
         

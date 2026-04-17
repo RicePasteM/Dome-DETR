@@ -37,6 +37,14 @@ def main(
         # raise AttributeError('Only support resume to load model.state_dict by now.')
         print("not load model.state_dict, use default init state dict...")
 
+    eval_size = cfg.yaml_cfg.get("eval_spatial_size", None)
+    if args.input_size is not None:
+        input_h = input_w = args.input_size
+    elif eval_size is not None:
+        input_h, input_w = eval_size
+    else:
+        input_h = input_w = 640
+
     class Model(nn.Module):
         def __init__(
             self,
@@ -50,18 +58,12 @@ def main(
             outputs = self.postprocessor(outputs, orig_target_sizes)
             return outputs
 
-    model = Model()
+    model = Model().eval()
 
-    data = torch.rand(32, 3, 640, 640)
-    size = torch.tensor([[640, 640]])
-    _ = model(data, size)
-
-    dynamic_axes = {
-        "images": {
-            0: "N",
-        },
-        "orig_target_sizes": {0: "N"},
-    }
+    data = torch.rand(args.batch_size, 3, input_h, input_w)
+    size = torch.tensor([[input_h, input_w]]).repeat(args.batch_size, 1)
+    with torch.no_grad():
+        _ = model(data, size)
 
     output_file = args.resume.replace(".pth", ".onnx") if args.resume else "model.onnx"
 
@@ -71,7 +73,7 @@ def main(
         output_file,
         input_names=["images", "orig_target_sizes"],
         output_names=["labels", "boxes", "scores"],
-        dynamic_axes=dynamic_axes,
+        dynamic_axes=None,
         opset_version=16,
         verbose=False,
         do_constant_folding=True,
@@ -88,9 +90,7 @@ def main(
         import onnx
         import onnxsim
 
-        dynamic = True
-        # input_shapes = {'images': [1, 3, 640, 640], 'orig_target_sizes': [1, 2]} if dynamic else None
-        input_shapes = {"images": data.shape, "orig_target_sizes": size.shape} if dynamic else None
+        input_shapes = {"images": data.shape, "orig_target_sizes": size.shape}
         onnx_model_simplify, check = onnxsim.simplify(output_file, test_input_shapes=input_shapes)
         onnx.save(onnx_model_simplify, output_file)
         print(f"Simplify onnx model {check}...")
@@ -112,14 +112,26 @@ if __name__ == "__main__":
         type=str,
     )
     parser.add_argument(
+        "--input-size",
+        type=int,
+        default=None,
+        help="Square input size. Defaults to eval_spatial_size from the config when available.",
+    )
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=1,
+        help="Export batch size. Batch > 1 is not recommended for the current deploy path.",
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
-        default=True,
+        default=False,
     )
     parser.add_argument(
         "--simplify",
         action="store_true",
-        default=True,
+        default=False,
     )
     args = parser.parse_args()
     main(args)

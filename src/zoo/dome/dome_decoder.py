@@ -21,7 +21,7 @@ import torch.nn.init as init
 from ...core import register
 from .denoising import get_contrastive_denoising_training_group
 from .dome_utils import distance2bbox, weighting_function
-from src.zoo.dome.dynamic_nms import dynamic_nms, dynamic_nms_fast
+from src.zoo.dome.dynamic_nms import dynamic_nms, dynamic_nms_fast, dynamic_nms_fast_static
 from .utils import (
     bias_init_with_prob,
     deformable_attention_core_func_v2,
@@ -802,14 +802,27 @@ class DomeTransformer(nn.Module):
             cx, cy = F.sigmoid(anchors_second[..., 0]), F.sigmoid(anchors_second[..., 1])
             window_col = (cx * n_x).long().clamp(0, n_x - 1)
             window_row = (cy * n_y).long().clamp(0, n_y - 1)
-        
-            selected_mask = defe_window_mask[
-                torch.arange(B, device=enc_topk_anchors.device).view(-1, 1),
-                window_row,
-                window_col,
-            ]
+
+            mask_flat = defe_window_mask.reshape(B, -1)
+            flat_window_idx = window_row * n_y + window_col
+            selected_mask = mask_flat.gather(1, flat_window_idx)
         else:
             selected_mask = torch.ones_like(anchors_second[..., 0], dtype=torch.bool)
+
+        if torch.onnx.is_in_onnx_export():
+            if B != 1:
+                raise ValueError("The ONNX export path only supports batch size 1.")
+            return self._get_decoder_input_export(
+                memory_first,
+                logits_first,
+                anchors_first,
+                memory_second,
+                logits_second,
+                anchors_second,
+                selected_mask,
+                defe_feature,
+                num_classes,
+            )
 
         # Process each batch and combine valid anchors
         combined_memory, combined_logits, combined_anchors, combined_bbox_unact = [], [], [], []
@@ -818,9 +831,10 @@ class DomeTransformer(nn.Module):
         # Do class-based NMS anchor selection
         for b in range(B):
             mask_b = selected_mask[b]
-            mem_second = memory_second[b][mask_b]
-            log_second = logits_second[b][mask_b]
-            anc_second = anchors_second[b][mask_b]
+            second_keep_idx = torch.nonzero(mask_b).squeeze(1)
+            mem_second = memory_second[b].index_select(0, second_keep_idx)
+            log_second = logits_second[b].index_select(0, second_keep_idx)
+            anc_second = anchors_second[b].index_select(0, second_keep_idx)
 
             mem_combined = torch.cat([memory_first[b], mem_second], dim=0)
             log_combined = torch.cat([logits_first[b], log_second], dim=0)
@@ -847,7 +861,10 @@ class DomeTransformer(nn.Module):
                 cf_h, cf_w = defe_feature.shape[2:]
                 window_row = (cx * (cf_w - 1)).long().clamp(0, cf_w - 1)
                 window_col = (cy * (cf_h - 1)).long().clamp(0, cf_h - 1)
-                density_values = defe_feature[b, :, window_row, window_col].squeeze(0).detach()  # 形状 (num_queries,)
+                flat_window_idx = window_row * cf_w + window_col
+                density_values = (
+                    defe_feature[b, 0].reshape(-1).gather(0, flat_window_idx).detach()
+                )
 
                 iou_thresholds = 0.4 + 0.5 * density_values
 
@@ -863,10 +880,10 @@ class DomeTransformer(nn.Module):
                 final_keep_idx = torch.arange(min_num).to(keep_idx.device)
                 final_keep_idx = torch.cat([final_keep_idx, keep_idx[keep_idx >= min_num]])
 
-                mem_combined = mem_combined[final_keep_idx]
-                log_combined = log_combined[final_keep_idx]
-                anc_combined = anc_combined[final_keep_idx]
-                bbox_combined_unact = bbox_combined_unact[final_keep_idx]
+                mem_combined = mem_combined.index_select(0, final_keep_idx)
+                log_combined = log_combined.index_select(0, final_keep_idx)
+                anc_combined = anc_combined.index_select(0, final_keep_idx)
+                bbox_combined_unact = bbox_combined_unact.index_select(0, final_keep_idx)
 
             combined_memory.append(mem_combined)
             combined_logits.append(log_combined)
@@ -891,6 +908,15 @@ class DomeTransformer(nn.Module):
             padded_bbox_unact[b, :current_len] = combined_bbox_unact[b]
             batch_queries_num.append(current_len)
 
+        if B == 1:
+            enc_topk_bbox_unact = combined_bbox_unact[0].unsqueeze(0)
+            enc_topk_bboxes = F.sigmoid(enc_topk_bbox_unact)
+            enc_topk_bboxes_list = [enc_topk_bboxes]
+            enc_topk_logits_list = [combined_logits[0].unsqueeze(0)]
+            content = combined_memory[0].unsqueeze(0).detach()
+            enc_topk_bbox_unact = enc_topk_bbox_unact.detach()
+            return content, enc_topk_bbox_unact, enc_topk_bboxes_list, enc_topk_logits_list, [total_per_batch[0]]
+
         # 我们直接使用已经 Pad 好的 padded_bbox_unact 和 padded_logits 即可。
         enc_topk_bbox_unact = padded_bbox_unact
 
@@ -907,6 +933,91 @@ class DomeTransformer(nn.Module):
         enc_topk_bbox_unact = enc_topk_bbox_unact.detach()
 
         return content, enc_topk_bbox_unact, enc_topk_bboxes_list, enc_topk_logits_list, batch_queries_num
+
+    def _get_decoder_input_export(
+        self,
+        memory_first,
+        logits_first,
+        anchors_first,
+        memory_second,
+        logits_second,
+        anchors_second,
+        selected_mask,
+        defe_feature,
+        num_classes,
+    ):
+        """
+        Export-only path:
+        keep a fixed candidate count before NMS so the greedy suppression loop
+        can be statically unrolled and TensorRT no longer sees an ONNX Loop op.
+        """
+        device = memory_first.device
+        min_num = self.min_num_select
+
+        mem_combined = torch.cat([memory_first[0], memory_second[0]], dim=0)
+        log_combined = torch.cat([logits_first[0], logits_second[0]], dim=0)
+        anc_combined = torch.cat([anchors_first[0], anchors_second[0]], dim=0)
+        active_mask = torch.cat(
+            [
+                torch.ones(min_num, dtype=torch.bool, device=device),
+                selected_mask[0],
+            ],
+            dim=0,
+        )
+
+        bbox_combined_unact = self.enc_bbox_head(mem_combined) + anc_combined
+        bbox_combined = F.sigmoid(bbox_combined_unact)
+
+        cx = bbox_combined[:, 0]
+        cy = bbox_combined[:, 1]
+        w = bbox_combined[:, 2]
+        h = bbox_combined[:, 3]
+        x1 = cx - w / 2
+        y1 = cy - h / 2
+        x2 = cx + w / 2
+        y2 = cy + h / 2
+        boxes = torch.stack([x1, y1, x2, y2], dim=1)
+
+        cf_h, cf_w = defe_feature.shape[2:]
+        window_row = (cx * (cf_w - 1)).long().clamp(0, cf_w - 1)
+        window_col = (cy * (cf_h - 1)).long().clamp(0, cf_h - 1)
+        flat_window_idx = window_row * cf_w + window_col
+        density_values = defe_feature[0, 0].reshape(-1).gather(0, flat_window_idx).detach()
+        iou_thresholds = 0.4 + 0.5 * density_values
+
+        scores, class_ids = log_combined.max(dim=1)
+        invalid_scores = torch.full_like(scores, torch.finfo(scores.dtype).min)
+        scores_for_nms = torch.where(active_mask, scores, invalid_scores)
+        keep_idx = dynamic_nms_fast_static(
+            boxes,
+            scores_for_nms,
+            class_ids,
+            iou_thresholds,
+            active_mask,
+            self.max_num_select,
+        )
+
+        final_keep_idx = torch.arange(min_num, device=device)
+        final_keep_idx = torch.cat([final_keep_idx, keep_idx[keep_idx >= min_num]])
+
+        mem_combined = mem_combined.index_select(0, final_keep_idx)
+        log_combined = log_combined.index_select(0, final_keep_idx)
+        bbox_combined_unact = bbox_combined_unact.index_select(0, final_keep_idx)
+
+        enc_topk_bbox_unact = bbox_combined_unact.unsqueeze(0)
+        enc_topk_bboxes = F.sigmoid(enc_topk_bbox_unact)
+        enc_topk_bboxes_list = [enc_topk_bboxes]
+        enc_topk_logits_list = [log_combined.unsqueeze(0)]
+        content = mem_combined.unsqueeze(0).detach()
+        enc_topk_bbox_unact = enc_topk_bbox_unact.detach()
+
+        return (
+            content,
+            enc_topk_bbox_unact,
+            enc_topk_bboxes_list,
+            enc_topk_logits_list,
+            [final_keep_idx.shape[0]],
+        )
     
 
     def _select_topk(

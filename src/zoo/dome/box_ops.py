@@ -5,7 +5,6 @@ https://github.com/facebookresearch/detr/blob/main/util/box_ops.py
 
 import torch
 from torch import Tensor
-from torchvision.ops.boxes import box_area
 
 
 def box_cxcywh_to_xyxy(x):
@@ -27,8 +26,12 @@ def box_xyxy_to_cxcywh(x: Tensor) -> Tensor:
 
 # modified from torchvision to also return the union
 def box_iou(boxes1: Tensor, boxes2: Tensor):
-    area1 = box_area(boxes1)
-    area2 = box_area(boxes2)
+    area1 = (boxes1[:, 2] - boxes1[:, 0]).clamp(min=0) * (
+        boxes1[:, 3] - boxes1[:, 1]
+    ).clamp(min=0)
+    area2 = (boxes2[:, 2] - boxes2[:, 0]).clamp(min=0) * (
+        boxes2[:, 3] - boxes2[:, 1]
+    ).clamp(min=0)
 
     lt = torch.max(boxes1[:, None, :2], boxes2[:, :2])  # [N,M,2]
     rb = torch.min(boxes1[:, None, 2:], boxes2[:, 2:])  # [N,M,2]

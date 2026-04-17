@@ -111,12 +111,18 @@ class AxisPermutedEncoderLayer(nn.Module):
         self.dropout2 = nn.Dropout(dropout)
         self.activation = get_activation(activation)
 
-    def forward(self, q, k, v, src_mask=None) -> torch.Tensor:
+    def forward(self, q, k, v, src_mask=None, key_padding_mask=None) -> torch.Tensor:
         src = residual = v
         if self.normalize_before:
             src = self.norm1(src)
 
-        src, _ = self.self_attn(q, k, value=src, attn_mask=src_mask)
+        src, _ = self.self_attn(
+            q,
+            k,
+            value=src,
+            attn_mask=src_mask,
+            key_padding_mask=key_padding_mask,
+        )
 
         src = residual + self.dropout1(src)
         if not self.normalize_before:
@@ -192,9 +198,28 @@ class WindowProcessor(nn.Module):
         )
 
         self.window_encoder = AxisPermutedEncoder(encoder_layer, self.num_layers)
-        
 
-    def forward(self, backbone_memory, defe_feature_filtered, window_size, glob_pos_embed):
+    @staticmethod
+    def _should_use_export_path():
+        return torch.onnx.is_in_onnx_export()
+
+    def forward(self, backbone_memory, defe_feature_filtered, window_size, glob_pos_embed, mask_stride=None):
+        if self._should_use_export_path():
+            return self._forward_export(
+                backbone_memory,
+                defe_feature_filtered,
+                window_size,
+                glob_pos_embed,
+                mask_stride,
+            )
+        return self._forward_default(
+            backbone_memory,
+            defe_feature_filtered,
+            window_size,
+            glob_pos_embed,
+        )
+
+    def _forward_default(self, backbone_memory, defe_feature_filtered, window_size, glob_pos_embed):
         """
         前向传播
         Args:
@@ -212,25 +237,17 @@ class WindowProcessor(nn.Module):
         num_win_w = W // window_size
 
         rel_pos_embed = self._get_rel_embedding((window_size, window_size)).to(backbone_memory.device)
-        
-        # 初始化重建特征图
-        reconstructed = backbone_memory.clone()
-        
-        # 生成窗口划分
-        windows, defe_mask = self._prepare_windows(backbone_memory, defe_feature_filtered, window_size)
 
-        # import pdb; pdb.set_trace()
+        reconstructed = backbone_memory.clone()
+        windows, defe_mask = self._prepare_windows(backbone_memory, defe_feature_filtered, window_size)
 
         if SAVE_INTERMEDIATE_VISUALIZE_RESULT:
             window_mask_vis = defe_mask.float().unsqueeze(-1)  # [B, num_win_h, num_win_w, 1]
             visualize_src_flatten(window_mask_vis, [(num_win_h, num_win_w)], "defe_window_mask", False)
 
-        
         for b in range(B):
             valid_windows = torch.nonzero(defe_mask[b])
-            # print(f"valid_windows: {valid_windows}")
             if len(valid_windows) == 0:
-                # open a file to save these prints
                 with open("no_valid_windows.log", "a") as f:
                     f.write(f"batch {b} has no valid windows\n")
                     f.write(f"defe_feature_filtered_nonzero: {torch.nonzero(defe_feature_filtered[b])}\n")
@@ -238,55 +255,154 @@ class WindowProcessor(nn.Module):
                     f.write(f"defe_mask: {defe_mask[b].size()}\n")
             assert len(valid_windows) > 0, "No valid windows found"
 
-            
-            # 批量处理窗口特征
             window_features, glob_pos_embeds = self._process_windows(
                 windows[b],
                 valid_windows,
-                H, W, window_size,
-                glob_pos_embed
+                H,
+                W,
+                window_size,
+                glob_pos_embed,
             )
-            
+
             encoded_features = self._encode_features(window_features, rel_pos_embed, glob_pos_embeds)
-            
-            # # 特征重建
+
             self._reconstruct_features(
-                reconstructed, 
+                reconstructed,
                 b,
                 encoded_features,
                 valid_windows,
-                window_size, window_size
+                window_size,
+                window_size,
             )
-            
+
         return reconstructed, defe_mask
 
+    def _forward_export(self, backbone_memory, defe_feature_filtered, window_size, glob_pos_embed, mask_stride):
+        """
+        导出阶段使用向量化实现，避免窗口级 Python 循环进入 ONNX 图。
+        """
+        B, C, H, W = backbone_memory.shape
 
-    def _prepare_windows(self, features, mask, window_size):
-        """预处理窗口划分和掩码（最大池化优化版）"""
+        assert H % window_size == 0 and W % window_size == 0, "H and W must be divisible by window_size"
+
+        num_win_h = H // window_size
+        num_win_w = W // window_size
+
+        rel_pos_embed = self._get_rel_embedding((window_size, window_size)).to(backbone_memory.device)
+
+        windows, defe_mask = self._prepare_windows_export(
+            backbone_memory,
+            defe_feature_filtered,
+            window_size,
+        )
+
+        if SAVE_INTERMEDIATE_VISUALIZE_RESULT:
+            window_mask_vis = defe_mask.float().unsqueeze(-1)
+            visualize_src_flatten(window_mask_vis, [(num_win_h, num_win_w)], "defe_window_mask", False)
+
+        glob_pos_windows = (
+            glob_pos_embed.view(C, num_win_h, window_size, num_win_w, window_size)
+            .permute(1, 3, 0, 2, 4)
+            .unsqueeze(0)
+            .expand(B, -1, -1, -1, -1, -1)
+        )
+
+        num_windows = num_win_h * num_win_w
+        token_len = window_size * window_size
+
+        features = windows.reshape(B, num_windows, C, window_size, window_size)
+        features = features.reshape(B, num_windows, C, token_len).permute(0, 1, 3, 2)
+        glob_pos_embeds = glob_pos_windows.reshape(B, num_windows, C, window_size, window_size)
+        glob_pos_embeds = glob_pos_embeds.reshape(B, num_windows, C, token_len).permute(0, 1, 3, 2)
+        rel_pos = rel_pos_embed.reshape(C, token_len).permute(1, 0).view(1, 1, token_len, C)
+        valid_mask = defe_mask.reshape(B, num_windows)
+
+        for layer in self.window_encoder.layers:
+            within_input = features.reshape(B * num_windows, token_len, C)
+            within_pos = glob_pos_embeds.reshape(B * num_windows, token_len, C) + rel_pos.reshape(
+                1, token_len, C
+            )
+            within_out = layer(
+                within_input + within_pos,
+                within_input + within_pos,
+                within_input,
+            )
+            features = within_out.reshape(B, num_windows, token_len, C)
+
+            cross_input = features.permute(0, 2, 1, 3).reshape(B * token_len, num_windows, C)
+            cross_pos = (glob_pos_embeds + rel_pos).permute(0, 2, 1, 3).reshape(
+                B * token_len, num_windows, C
+            )
+            key_padding_mask = (~valid_mask).unsqueeze(1).expand(B, token_len, num_windows)
+            key_padding_mask = key_padding_mask.reshape(B * token_len, num_windows)
+            cross_out = layer(
+                cross_input + cross_pos,
+                cross_input + cross_pos,
+                cross_input,
+                key_padding_mask=key_padding_mask,
+            )
+            features = cross_out.reshape(B, token_len, num_windows, C).permute(0, 2, 1, 3)
+
+        if self.window_encoder.norm is not None:
+            features = self.window_encoder.norm(features)
+
+        encoded_features = features.permute(0, 1, 3, 2).reshape(
+            B, num_windows, C, window_size, window_size
+        )
+        encoded_features = encoded_features * valid_mask.view(B, num_windows, 1, 1, 1).to(
+            encoded_features.dtype
+        )
+        encoded_features = encoded_features.reshape(B, num_win_h, num_win_w, C, window_size, window_size)
+        updates = encoded_features.permute(0, 3, 1, 4, 2, 5).reshape(B, C, H, W)
+
+        return backbone_memory + updates, defe_mask
+
+    def _prepare_windows_export(self, features, mask, window_size):
+        """
+        导出阶段使用固定窗口池化，避免动态 kernel_size 进入 ONNX。
+        """
         B, C, H_feat, W_feat = features.shape
-        H_mask, W_mask = mask.shape[-2:]  # 原始mask的高分辨率尺寸
-        
+
         num_win_h = H_feat // window_size
         num_win_w = W_feat // window_size
-        
-        # 计算池化核尺寸和步长
+
+        windows = features.view(B, C, num_win_h, window_size, num_win_w, window_size).permute(0, 2, 4, 1, 3, 5)
+
+        pooled_mask = F.max_pool2d(
+            mask.float(),
+            kernel_size=(window_size, window_size),
+            stride=(window_size, window_size),
+        )
+        defe_mask = pooled_mask.squeeze(1) > 0
+
+        return windows, defe_mask
+
+
+    def _prepare_windows(self, features, mask, window_size, mask_stride=None):
+        """预处理窗口划分和掩码（最大池化优化版）"""
+        B, C, H_feat, W_feat = features.shape
+        H_mask, W_mask = mask.shape[-2:]
+
+        num_win_h = H_feat // window_size
+        num_win_w = W_feat // window_size
+
         kernel_h = H_mask // H_feat * window_size
         kernel_w = W_mask // W_feat * window_size
         stride_h = kernel_h
         stride_w = kernel_w
-        
+
         # 划分特征图窗口 [B, num_win_h, num_win_w, C, window_size, window_size]
         windows = features.view(B, C, num_win_h, window_size, num_win_w, window_size).permute(0, 2, 4, 1, 3, 5)
-        
+
         # 最大池化统计窗口有效性
         mask_float = mask.float()  # 转换为浮点型以支持池化
         pooled_mask = F.max_pool2d(
-            mask_float, 
-            kernel_size=(kernel_h, kernel_w), 
+            mask_float,
+            kernel_size=(kernel_h, kernel_w),
             stride=(stride_h, stride_w)
         )
         defe_mask = (pooled_mask.squeeze(1) > 0)  # [B, num_win_h, num_win_w]
-        
+
         return windows, defe_mask
 
 

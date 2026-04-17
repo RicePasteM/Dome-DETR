@@ -24,6 +24,16 @@ def resize_with_aspect_ratio(image, size, interpolation=Image.BILINEAR):
     return new_image, ratio, (size - new_width) // 2, (size - new_height) // 2
 
 
+def resolve_input_size(sess, override=None):
+    if override is not None:
+        return override
+    shape = sess.get_inputs()[0].shape
+    if len(shape) >= 4 and isinstance(shape[2], int) and isinstance(shape[3], int):
+        if shape[2] == shape[3]:
+            return int(shape[2])
+    return 640
+
+
 def draw(images, labels, boxes, scores, ratios, paddings, thrh=0.4):
     result_images = []
     for i, im in enumerate(images):
@@ -51,9 +61,9 @@ def draw(images, labels, boxes, scores, ratios, paddings, thrh=0.4):
     return result_images
 
 
-def process_image(sess, im_pil):
+def process_image(sess, im_pil, input_size):
     # Resize image while preserving aspect ratio
-    resized_im_pil, ratio, pad_w, pad_h = resize_with_aspect_ratio(im_pil, 640)
+    resized_im_pil, ratio, pad_w, pad_h = resize_with_aspect_ratio(im_pil, input_size)
     orig_size = torch.tensor([[resized_im_pil.size[1], resized_im_pil.size[0]]])
 
     transforms = T.Compose(
@@ -75,7 +85,7 @@ def process_image(sess, im_pil):
     print("Image processing complete. Result saved as 'result.jpg'.")
 
 
-def process_video(sess, video_path):
+def process_video(sess, video_path, input_size):
     cap = cv2.VideoCapture(video_path)
 
     # Get video properties
@@ -98,7 +108,7 @@ def process_video(sess, video_path):
         frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
 
         # Resize frame while preserving aspect ratio
-        resized_frame_pil, ratio, pad_w, pad_h = resize_with_aspect_ratio(frame_pil, 640)
+        resized_frame_pil, ratio, pad_w, pad_h = resize_with_aspect_ratio(frame_pil, input_size)
         orig_size = torch.tensor([[resized_frame_pil.size[1], resized_frame_pil.size[0]]])
 
         transforms = T.Compose(
@@ -139,16 +149,18 @@ def main(args):
     # Load the ONNX model
     sess = ort.InferenceSession(args.onnx)
     print(f"Using device: {ort.get_device()}")
+    input_size = resolve_input_size(sess, args.size)
+    print(f"Using input size: {input_size}")
 
     input_path = args.input
 
     try:
         # Try to open the input as an image
         im_pil = Image.open(input_path).convert("RGB")
-        process_image(sess, im_pil)
+        process_image(sess, im_pil, input_size)
     except IOError:
         # Not an image, process as video
-        process_video(sess, input_path)
+        process_video(sess, input_path, input_size)
 
 
 if __name__ == "__main__":
@@ -158,6 +170,12 @@ if __name__ == "__main__":
     parser.add_argument("--onnx", type=str, required=True, help="Path to the ONNX model file.")
     parser.add_argument(
         "--input", type=str, required=True, help="Path to the input image or video file."
+    )
+    parser.add_argument(
+        "--size",
+        type=int,
+        default=None,
+        help="Square inference size. Defaults to the size stored in the ONNX input tensor.",
     )
     args = parser.parse_args()
     main(args)

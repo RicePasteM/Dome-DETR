@@ -302,6 +302,7 @@ class HybridEncoder(nn.Module):
         self.defe_type = defe_type
         self.use_mwas = use_mwas
         self.mwas_window_size = mwas_window_size
+        self._deploy_mode = False
 
         # channel projection
         self.input_proj = nn.ModuleList()
@@ -457,45 +458,88 @@ class HybridEncoder(nn.Module):
             restored_feats.append(feat)
             start_idx = end_idx
         return restored_feats
-    
 
-    def adaptive_defe_filter(self, defe_feature, init_thresh=0.05, step=0.01):
+    def convert_to_deploy(self):
+        self._deploy_mode = True
+
+    def _should_use_export_path(self):
+        return self._deploy_mode and torch.onnx.is_in_onnx_export()
+
+    def adaptive_defe_filter_train(self, defe_feature, init_thresh=0.05, step=0.01):
         """
-        自适应调整阈值直到每个样本找到有效区域
-        Args:
-            defe_feature: 置信度特征图 [B, 1, H, W]
-            init_thresh: 初始阈值
-            step: 阈值调整步长
-        Returns:
-            defe_feature_filtered: 调整后的二值掩码 [B, 1, H, W]
+        保留训练/普通推理阶段的原始逐样本逻辑，避免改动正常模型行为。
         """
         B = defe_feature.shape[0]
-        device = defe_feature.device
         final_mask = torch.zeros_like(defe_feature, dtype=torch.bool)
-        
-        # 对每个样本独立处理
+
         for b in range(B):
-            # 提取单样本置信图 [1, H, W]
-            single_feat = defe_feature[b:b+1]
+            single_feat = defe_feature[b : b + 1]
             current_thresh = init_thresh
             found = False
-            
-            # 阈值搜索循环
+
             while current_thresh >= 0:
-                mask = (single_feat > current_thresh)
+                mask = single_feat > current_thresh
                 if mask.any():
-                    final_mask[b:b+1] = mask
+                    final_mask[b : b + 1] = mask
                     found = True
                     break
                 current_thresh = round(current_thresh - step, 2)
-            
-            # 未找到有效区域则随机选择一个点加强
+
             if not found:
-                final_mask[b:b+1] = torch.zeros_like(single_feat, dtype=torch.bool)
-                final_mask[b:b+1][:, random.randint(0, single_feat.shape[1] - 1), random.randint(0, single_feat.shape[2] - 1)] = True
+                final_mask[b : b + 1] = torch.zeros_like(single_feat, dtype=torch.bool)
+                rand_h = random.randint(0, single_feat.shape[2] - 1)
+                rand_w = random.randint(0, single_feat.shape[3] - 1)
+                final_mask[b, :, rand_h, rand_w] = True
                 print(f"Batch {b}: No valid region found, use random point enhancement")
-        
+
         return final_mask
+
+    def adaptive_defe_filter_export(self, defe_feature, init_thresh=0.05, step=0.01):
+        """
+        导出阶段使用纯张量实现，避免 Python 控制流进入 ONNX 图。
+        """
+        max_vals = defe_feature.flatten(2).amax(dim=-1, keepdim=True)
+        eps = torch.finfo(defe_feature.dtype).eps
+        thresholds = torch.floor((max_vals - eps) / step) * step
+        thresholds = thresholds.clamp(min=0.0, max=init_thresh)
+        final_mask = defe_feature > thresholds.unsqueeze(-1)
+
+        # The density map is produced by a sigmoid head, so empty masks are
+        # extremely rare. Keep the original fallback semantics, but express it
+        # without data-dependent control flow so tracing remains sample-agnostic.
+        B, _, H, W = defe_feature.shape
+        final_mask_flat = final_mask.flatten(2)
+        empty_mask = ~final_mask_flat.any(dim=-1, keepdim=True)
+        flat_indices = defe_feature.flatten(2).argmax(dim=-1, keepdim=True)
+        positions = torch.arange(H * W, device=defe_feature.device).view(1, 1, -1)
+        fallback_flat = positions == flat_indices
+        final_mask_flat = torch.logical_or(
+            torch.logical_and(empty_mask, fallback_flat),
+            torch.logical_and(torch.logical_not(empty_mask), final_mask_flat),
+        )
+
+        return final_mask_flat.view(B, 1, H, W)
+
+    def adaptive_defe_filter(self, defe_feature, init_thresh=0.05, step=0.01):
+        if self._should_use_export_path():
+            return self.adaptive_defe_filter_export(defe_feature, init_thresh, step)
+        return self.adaptive_defe_filter_train(defe_feature, init_thresh, step)
+
+    def pool_density_map(self, defe_feature, feat_hw):
+        feat_h, feat_w = feat_hw
+        target_size = (feat_h // self.mwas_window_size, feat_w // self.mwas_window_size)
+        if self._should_use_export_path():
+            pool_kernel = self.feat_strides[1] * self.mwas_window_size
+            if (
+                defe_feature.shape[-2] % pool_kernel == 0
+                and defe_feature.shape[-1] % pool_kernel == 0
+            ):
+                return F.max_pool2d(
+                    defe_feature,
+                    kernel_size=pool_kernel,
+                    stride=pool_kernel,
+                )
+        return F.adaptive_max_pool2d(defe_feature, target_size)
 
 
     def forward(self, feats, img_inputs, targets=None):
@@ -513,14 +557,20 @@ class HybridEncoder(nn.Module):
             defe_feature, reg_value = self.DeFE(proj_feats[0])
             W, H = proj_feats[1].shape[2:]
             out["defe"] = {"reg_value": reg_value, "density_map": defe_feature}
-            defe_feature_pooled = F.adaptive_max_pool2d(defe_feature, (H // self.mwas_window_size, W // self.mwas_window_size))
+            defe_feature_pooled = self.pool_density_map(defe_feature, proj_feats[1].shape[2:])
             out["defe"]["defe_feature"] = defe_feature
             out["defe"]["density_map_pooled"] = defe_feature_pooled
             if self.use_mwas:
                 W, H = proj_feats[1].shape[2:]
                 defe_feature_filtered = self.adaptive_defe_filter(F.interpolate(defe_feature_pooled, size=(H, W), mode="bilinear", align_corners=True)).float()
                 glob_pos_embed = self.build_2d_sincos_position_embedding(W, H, embed_dim=self.hidden_dim).permute(0, 2, 1).view(-1, H, W).to(proj_feats[1].device)
-                enhanced_memory, defe_window_mask = self.mwas_processor(proj_feats[1], defe_feature_filtered, self.mwas_window_size, glob_pos_embed)
+                enhanced_memory, defe_window_mask = self.mwas_processor(
+                    proj_feats[1],
+                    defe_feature_filtered,
+                    self.mwas_window_size,
+                    glob_pos_embed,
+                    self.feat_strides[1],
+                )
                 proj_feats[1] = enhanced_memory
                 out["defe"]["defe_window_mask"] = defe_window_mask
                 if SAVE_INTERMEDIATE_VISUALIZE_RESULT:
