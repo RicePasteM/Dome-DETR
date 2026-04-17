@@ -25,6 +25,8 @@
 
 ## Updates
 
+[2026/4/17] We published an `onnx-export` branch with validated ONNX and TensorRT export support for Dome-DETR-S on VisDrone. Feel free to try it and share any issues or feedback.
+
 [2026/4/13] We published pretrained checkpoints of Dome-DETR-S on VisDrone.
 
 [2026/3/14] We published pretrained checkpoints of Dome-DETR-M and Dome-DETR-L on VisDrone.
